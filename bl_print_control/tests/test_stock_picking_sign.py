@@ -23,6 +23,13 @@ class TestStockPickingSign(TransactionCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
+        # Avec base_report_to_printer_cups, une imprimante injoignable
+        # (pas de serveur CUPS en test) bloque l'envoi : on l'ignore,
+        # comme les tests d'OCA.
+        cls.env = cls.env(context=dict(cls.env.context, skip_printer_exception=True))
+        # L'e-mail de confirmation imprime aussi le BL : testé à part dans
+        # test_confirmation_email, coupé ici quel que soit le réglage.
+        cls.env.company.stock_move_email_validation = False
         # Même réglage qu'en production : le BL part à l'imprimante.
         cls.report = cls.env.ref("stock.action_report_delivery")
         cls.report.write(

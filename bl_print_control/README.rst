@@ -40,25 +40,34 @@ Case **Ne pas imprimer le BL à la validation** sur la fiche client, onglet
 recopie sur ses contacts et adresses de livraison, où elle apparaît en
 lecture seule.
 
-Pour un client coché :
+Le BL peut s'imprimer à la validation par deux chemins. La case couvre les
+deux.
 
-* la validation d'une livraison n'imprime plus le BL ;
-* les autres impressions automatiques à la validation (bon de retour,
-  étiquettes, colis) sont conservées ;
-* dans une validation groupée, seuls les BL des autres clients s'impriment.
+**L'e-mail de confirmation de livraison** (*Inventaire > Configuration >
+Paramètres*, « Confirmation par e-mail », réglage par société). À la
+validation, Odoo envoie au client un e-mail avec le BL en pièce jointe. Avec
+``base_report_to_printer`` en *Send to Printer*, rendre cette pièce jointe
+envoie aussi le BL à l'imprimante. Pour un client coché, l'e-mail part
+toujours avec son BL, mais rien n'est imprimé.
 
-L'impression automatique vient du type d'opération des livraisons :
-*Inventaire > Configuration > Types d'opérations*, onglet *Matériel*, case
-*Bon de livraison* du bloc « Imprimer sur validation »
-(``auto_print_delivery_slip``). Le module ne fait que retirer certains clients
-de cette impression.
+``_send_confirmation_email`` est surchargé : les transferts des clients cochés
+y passent avec la clé de contexte ``must_skip_send_to_printer``, les autres
+sans. Les surcharges de ``point_of_sale`` et ``stock_sms`` appellent la
+méthode standard sur un sous-ensemble : la clé leur parvient.
 
-À la validation, ``button_validate`` demande à
-``_get_autoprint_report_actions`` la liste des rapports à imprimer. Le
-standard sélectionne les transferts sur le seul type d'opération, sans point
-d'extension. Le module reprend le résultat et reconstruit l'action du BL sans
-les transferts dont la société cliente (``commercial_partner_id``) est
-cochée. S'il n'en reste aucun, l'action du BL est retirée.
+**L'impression automatique du type d'opération** (*Inventaire > Configuration
+> Types d'opérations*, onglet *Matériel*, case *Bon de livraison* du bloc
+« Imprimer sur validation », ``auto_print_delivery_slip``). À la validation,
+``button_validate`` demande à ``_get_autoprint_report_actions`` la liste des
+rapports à imprimer. Le standard sélectionne les transferts sur le seul type
+d'opération, sans point d'extension. Le module reprend le résultat et
+reconstruit l'action du BL sans les transferts des clients cochés. S'il n'en
+reste aucun, l'action du BL est retirée. Les autres impressions automatiques
+(bon de retour, étiquettes, colis) sont conservées.
+
+Dans les deux cas, lors d'une validation groupée, seuls les BL des autres
+clients s'impriment. Le client coché est cherché sur la société
+(``commercial_partner_id``) du partenaire du transfert.
 
 Installation
 ============
@@ -75,7 +84,7 @@ Test manuel
 #. Le signer sur le smartphone : rien ne sort à l'imprimante, et le message
    « Order signed by … » apparaît dans le chatter avec le PDF signé.
 #. Cocher la case sur un client, valider une de ses livraisons : rien ne sort
-   à l'imprimante.
+   à l'imprimante, et le client reçoit quand même l'e-mail avec son BL.
 
 Tests automatisés
 =================
@@ -87,8 +96,15 @@ intercepte l'envoi à l'imprimante :
 * la signature n'imprime pas et joint bien le PDF signé ;
 * la clé de contexte ne survit pas à la signature.
 
+``tests/test_confirmation_email.py`` reprend la configuration de production :
+e-mail de confirmation activé, BL en Send to Printer.
+
+* témoin : l'e-mail d'un client normal imprime le BL ;
+* client coché : l'e-mail part avec le BL, sans impression ;
+* validation groupée : seul le BL du client normal s'imprime.
+
 ``tests/test_partner_no_autoprint.py`` active l'impression du BL à la
-validation sur les livraisons, puis vérifie :
+validation sur le type d'opération, puis vérifie :
 
 * témoin : un client normal déclenche l'impression du BL ;
 * une livraison vers une adresse d'un client coché n'imprime rien ;
@@ -96,8 +112,9 @@ validation sur les livraisons, puis vérifie :
 * le bon de retour reste imprimé pour le client coché ;
 * l'option suit la société sur ses adresses.
 
-Sans la surcharge de ``stock.picking``, les quatre tests de blocage échouent
-et les témoins passent. ::
+Les tests valent avec ou sans ``base_report_to_printer_cups`` : ils posent
+``skip_printer_exception``, comme ceux d'OCA, faute de serveur CUPS en test.
+Sans la surcharge de ``stock.picking``, les six tests de blocage échouent. ::
 
     odoo -d <base> -i bl_print_control --test-enable \
         --test-tags /bl_print_control --stop-after-init

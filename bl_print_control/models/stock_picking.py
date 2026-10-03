@@ -18,15 +18,30 @@ class StockPicking(models.Model):
             StockPicking, self.with_context(must_skip_send_to_printer=True)
         )._attach_sign()
 
+    def _filter_no_autoprint(self):
+        return self.filtered(
+            "partner_id.commercial_partner_id.no_autoprint_delivery_slip"
+        )
+
+    def _send_confirmation_email(self):
+        # L'e-mail de confirmation joint le BL en PDF : avec « Send to
+        # Printer », ce rendu part à l'imprimante. C'est l'impression « à la
+        # validation » des sociétés qui envoient cet e-mail. L'e-mail reste
+        # envoyé, seul l'envoi à l'imprimante est retenu.
+        blocked = self._filter_no_autoprint()
+        if blocked:
+            super(
+                StockPicking, blocked.with_context(must_skip_send_to_printer=True)
+            )._send_confirmation_email()
+        return super(StockPicking, self - blocked)._send_confirmation_email()
+
     def _get_autoprint_report_actions(self):
         # Le standard filtre les transferts sur le seul type d'opération, sans
         # point d'extension : on reconstruit l'action du BL sans les clients
         # qui l'ont refusé. Les autres impressions automatiques (bon de
         # retour, étiquettes, colis) restent telles quelles.
         report_actions = super()._get_autoprint_report_actions()
-        blocked = self.filtered(
-            "partner_id.commercial_partner_id.no_autoprint_delivery_slip"
-        )
+        blocked = self._filter_no_autoprint()
         if not blocked:
             return report_actions
         delivery_report = self.env.ref("stock.action_report_delivery")
